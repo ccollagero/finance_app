@@ -30,13 +30,16 @@ def fetch_data(ticker, start, end):
 
 data_load_state = st.text("Loading data...")
 data = fetch_data(stock_ticker, start_date, end_date)
+if data.empty:
+    st.error("No data fetched for the selected stock ticker. Please check the ticker symbol or date range.")
+    st.stop()
 data_load_state.text("Data Loaded!")
 
 # Preprocess Data
 def preprocess_data(data):
     data = data[['Close']]
     scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(data)
+    scaled_data = scaler.fit_transform(data.values.reshape(-1, 1))
     return scaled_data, scaler
 
 scaled_data, scaler = preprocess_data(data)
@@ -74,22 +77,23 @@ st.text("Model trained!")
 def predict(model, data):
     return model.predict(data)
 
-predicted_prices = predict(model, x_test)
+predicted_prices = predict(model, x_test.reshape((x_test.shape[0], x_test.shape[1], 1)))
 predicted_prices = scaler.inverse_transform(predicted_prices)
-y_test = scaler.inverse_transform(y_test)
+y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
 
 # Data Visualization
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=data.index[-len(y_test):], y=data['Close'].values[-len(y_test):], name="Actual Prices"))
-fig.add_trace(go.Scatter(x=data.index[-len(y_test):], y=predicted_prices.flatten(), name="Predicted Prices"))
+fig.add_trace(go.Scatter(x=pd.to_datetime(data.index[-len(y_test):]).strftime('%Y-%m-%d'), y=data['Close'].values[-len(y_test):], mode='lines', line=dict(shape='linear'), name="Actual Prices"))
+fig.add_trace(go.Scatter(x=pd.to_datetime(data.index[-len(y_test):]).strftime('%Y-%m-%d'), y=predicted_prices.flatten(), mode='lines', line=dict(shape='linear'), name="Predicted Prices"))
+fig.update_layout(xaxis=dict(tickformat='%Y-%m-%d'))
 st.plotly_chart(fig)
 
 # Download CSV
 def download_csv(data, predictions):
     df = pd.DataFrame({
         'Date': data.index[-len(predictions):],
-        'Actual Prices': data['Close'].values[-len(predictions):],
-        'Predicted Prices': predictions.flatten()
+        'Actual Prices': data['Close'].values[-len(predictions):].flatten(),
+        'Predicted Prices': np.array(predictions).flatten()
     })
     return df
 
@@ -99,7 +103,7 @@ csv = download_data.to_csv(index=False)
 st.download_button("Download as CSV", csv, "predictions.csv", "text/csv")
 
 # Performance Optimization with Caching
-@st.cache
+@st.cache_data
 def fetch_cached_data(ticker, start, end):
     return fetch_data(ticker, start, end)
 
